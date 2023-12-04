@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Philly Restaurant Rating by Block</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        #map {
+            width: 70%; 
+            height: 800px; 
+        }
+        #sidebar {
+            width: 28%; 
+            margin-left: 2%; 
+        }
+        #map-info, #restaurant-details, #boxplot-container {
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            padding: 10px;
+            box-sizing: border-box; 
+            height: 400px; 
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        path {
+            stroke: #fff;
+            stroke-width: 0.5;
+        }
+        .block-label {
+            fill: red;
+            font-size: 4px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 5px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <div id="map">
+        <svg></svg>
+    </div>
+    <div id="sidebar">
+        <div id="map-info"></div>
+        <div id="restaurant-details"></div>
+        <div id="boxplot-container">
+            <svg id="boxplot-noise-svg"></svg>
+            <svg id="boxplot-delivery-svg"></svg>
+            <svg id="boxplot-drive-thru-svg"></svg>
+            <svg id="boxplot-outdoor-seating-svg"></svg>
+        </div>
+    </div>
+
+    <script>
+        function drawBoxplot(data, containerId, title) {
+            let counts = {};
+            data.forEach(d => {
+                if (d) {
+                    counts[d] = (counts[d] || 0) + 1;
+                }
+            });
+
+            let plotData = Object.keys(counts).map(key => {
+                return { category: key, count: counts[key] };
+            });
+
+            const containerWidth = document.getElementById(containerId).clientWidth;
+            const margin = { top: 10, right: 30, bottom: 30, left: 40 };
+            const width = containerWidth - margin.left - margin.right;
+            const height = 300 - margin.top - margin.bottom;
+
+            const svgContainer = d3.select("#" + containerId);
+            svgContainer.html("");
+
+            const svg = svgContainer
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const x = d3.scaleBand()
+                .range([0, width])
+                .domain(plotData.map(d => d.category))
+                .padding(0.2);
+            svg.append("g")
+                .attr("transform", `translate(0, ${height})`)
+                .call(d3.axisBottom(x));
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(plotData, d => d.count)])
+                .range([height, 0]);
+            svg.append("g")
+                .call(d3.axisLeft(y));
+
+            svg.selectAll("bars")
+                .data(plotData)
+                .enter()
+                .append("rect")
+                .attr("x", d => x(d.category))
+                .attr("y", d => y(d.count))
+                .attr("width", x.bandwidth())
+                .attr("height", d => height - y(d.count))
+                .attr("fill", "#69b3a2");
+
+            svg.append("text")
+                .attr("x", width / 2)
+                .attr("y", 0 - (margin.top / 3))
+                .attr("text-anchor", "middle")
+                .style("font-size", "10px")
+                .text(title);
+        }
+
+        Promise.all([
+            d3.json('https://raw.githubusercontent.com/YuchenDou1/628project/main/philly.geojson'),
+            d3.csv('https://raw.githubusercontent.com/YuchenDou1/628project/main/rating.csv', d => {
+                d.average_rating = +d.average_rating;
+                d.latitude = +d.latitude;
+                d.longitude = +d.longitude;
+                return d;
+            })
+        ]).then(([geojsonData, restaurantData]) => {
+            geojsonData.features.forEach(feature => {
+                feature.properties.average_rating = 0;
+                feature.properties.count = 0;
+            });
+
+            restaurantData.forEach(restaurant => {
+                const point = turf.point([restaurant.longitude, restaurant.latitude]);
+                geojsonData.features.forEach(feature => {
+                    if (turf.booleanPointInPolygon(point, feature)) {
+                        feature.properties.average_rating += restaurant.average_rating;
+                        feature.properties.count += 1;
+                    }
+                });
+            });
+
+            geojsonData.features.forEach(feature => {
+                if (feature.properties.count > 0) {
+                    feature.properties.average_rating /= feature.properties.count;
+                } else {
+                    feature.properties.average_rating = null;
+                }
+            });
+
+            const maxAverageRating = d3.max(geojsonData.features, feature => feature.properties.average_rating);
+            const colorScale = d3.scaleSequential(d3.interpolateBlues)
+                .domain([0, maxAverageRating]);
+
+            const mapSvg = d3.select('#map svg');
+            const projection = d3.geoMercator().fitSize([600, 600], geojsonData);
+            const pathGenerator = d3.geoPath().projection(projection);
+
+            mapSvg.selectAll('path')
+                .data(geojsonData.features)
+                .enter().append('path')
+                .attr('d', pathGenerator)
+                .attr('fill', d => d.properties.average_rating ? colorScale(d.properties.average_rating) : '#ccc')
+                .attr('stroke', '#222')
+                .on('click', function(event, d) {
+                    const areaRestaurants = restaurantData.filter(r => {
+                        const point = turf.point([r.longitude, r.latitude]);
+                        return turf.booleanPointInPolygon(point, d);
+                    });
+
+                    const infoDiv = d3.select('#map-info');
+                    infoDiv.html('');
+                    infoDiv.append('h2').text(d.properties.name);
+
+                    const table = infoDiv.append('table');
+                    const headerRow = table.append('thead').append('tr');
+                    headerRow.append('th').text('Name');
+                    headerRow.append('th').text('Average Rating');
+
+                    const body = table.append('tbody');
+                    areaRestaurants.forEach(restaurant => {
+                        const row = body.append('tr');
+                        row.append('td').text(restaurant.name);
+                        row.append('td').text(restaurant.average_rating);
+
+                        row.on('click', function() {
+                            const detailsDiv = d3.select('#restaurant-details');
+                            detailsDiv.html('');
+
+                            Object.entries(restaurant).forEach(([key, value]) => {
+                                detailsDiv.append('p').text(`${key}: ${value}`);
+                            });
+                        });
+                    });
+
+                    const noiseLevelData = areaRestaurants.map(r => r.NoiseLevel).filter(Boolean);
+                    drawBoxplot(noiseLevelData, 'boxplot-noise-svg', 'Noise Level Distribution');
+
+                    const restaurantsDeliveryData = areaRestaurants.map(r => r.RestaurantsDelivery).filter(Boolean);
+                    drawBoxplot(restaurantsDeliveryData, 'boxplot-delivery-svg', 'Restaurants Delivery Distribution');
+                    const driveThruData = areaRestaurants.map(r => r.DriveThru).filter(val => val !== 'NA');
+                    drawBoxplot(driveThruData, 'boxplot-drive-thru-svg', 'Drive-Thru Availability Distribution');
+
+                    const outdoorSeatingData = areaRestaurants.map(r => r.OutdoorSeating).filter(val => val !== 'NA');
+                    drawBoxplot(outdoorSeatingData, 'boxplot-outdoor-seating-svg', 'Outdoor Seating Availability Distribution');
+                });
+
+            mapSvg.selectAll('.block-label')
+                .data(geojsonData.features)
+                .enter().append('text')
+                .attr('class', 'block-label')
+                .attr('transform', d => `translate(${pathGenerator.centroid(d)})`)
+                .text(d => d.properties.name);
+        });
+    </script>
+</body>
+</html>
