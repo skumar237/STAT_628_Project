@@ -4,4 +4,4 @@ Code: The code files are organized and can run separately, covering our entire p
 
 Data: Containing the raw and cleaned data.
 
-Images: containing all figures/images produced in our analysis.
+Plots: containing all plots/images produced in our analysis.
