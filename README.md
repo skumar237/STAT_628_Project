@@ -2,6 +2,6 @@ This Github repository includes the module 3 Assignment for STAT 628 by Srivats 
 
 Code: The code files are organized and can run separately, covering our entire problem analysis.
 
-Data: Containing the raw and cleaned data.
+Data: Containing the raw and cleaned data.For the data is too big we splited it into 9 parts
 
 Plots: containing all plots/images produced in our analysis.
