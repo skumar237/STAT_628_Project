@@ -1,0 +1,185 @@
+---
+title: "Untitled"
+author: "Yanrun Lu"
+date: "2023-11-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+data <- read.csv("C:/Users/lyr00/Desktop/yelp_reviews_RV_categories.csv")
+head(data)
+nrow(data)
+# 计算整体平均星级评分
+
+
+```
+
+```{r}
+unique_business_ids <- unique(data$business_id)
+number_of_unique_business_ids <- length(unique_business_ids)
+print(number_of_unique_business_ids)
+```
+
+```{r}
+library(dplyr)
+mean_stars_per_business <- data %>%
+  group_by(business_id) %>%
+  summarize(mean_stars = mean(stars, na.rm = TRUE))
+overall_mean_stars <- mean(mean_stars_per_business$mean_stars, na.rm = TRUE)
+print(overall_mean_stars)
+```
+
+
+
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+
+# 您之前的聚合数据代码
+# 计算中位数
+median_stars <- median(aggregated_data$average_stars, na.rm = TRUE)
+
+# 绘制直方图，并添加表示平均值的蓝色虚线和中位数的绿色虚线
+ggplot(aggregated_data, aes(x = average_stars)) +
+    geom_histogram(binwidth = 0.5, fill = "#FF5733", color = "darkred", alpha = 0.7) +
+    geom_vline(xintercept = overall_avg_stars, color = "blue", linetype = "dashed", size = 1) +
+    geom_vline(xintercept = median_stars, color = "green", linetype = "dashed", size = 1) +
+    geom_text(aes(x = overall_avg_stars, y = 50, label = paste("Avg:", round(overall_avg_stars, 2))), 
+              color = "blue", vjust = -0.5, hjust = 1.1, size = 5) +
+    geom_text(aes(x = median_stars, y = 80, label = paste("Median:", round(median_stars, 2))), 
+              color = "green", vjust = 2, hjust = -0.1, size = 5) +
+    theme_minimal() +
+    theme(
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        panel.grid.major = element_line(color = "grey", linetype = "dashed"),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "floralwhite")
+    ) +
+    labs(title = "Histogram of Star Ratings per Business", 
+         x = "Star Rating", 
+         y = "Number of Businesses")
+
+
+```
+
+
+
+
+```{r}
+data_3_4 <- subset(data, RestaurantsPriceRange2 %in% c(3, 4))
+data_1_2 <- subset(data, RestaurantsPriceRange2 %in% c(1, 2))
+data_missing <- subset(data, is.na(RestaurantsPriceRange2))
+nrow(data_3_4)
+nrow(data_1_2)
+nrow(data_missing)
+```
+
+
+```{r}
+unique_business_ids3 <- unique(data_3_4$business_id)
+number_of_unique_business_ids3 <- length(unique_business_ids3)
+print(number_of_unique_business_ids3)
+```
+```{r}
+unique_business_ids1 <- unique(data_1_2$business_id)
+number_of_unique_business_ids1 <- length(unique_business_ids1)
+print(number_of_unique_business_ids1)
+```
+
+```{r}
+unique_business_ids8 <- unique(data_missing$business_id)
+number_of_unique_business_ids8 <- length(unique_business_ids8)
+print(number_of_unique_business_ids8)
+```
+
+
+```{r}
+mean_stars_per_business <- data_missing %>%
+  group_by(business_id) %>%
+  summarize(mean_stars = mean(stars, na.rm = TRUE))
+overall_mean_stars <- mean(mean_stars_per_business$mean_stars, na.rm = TRUE)
+print(overall_mean_stars)
+```
+
+
+
+
+
+```{r}
+aggregated_data1 <- data_3_4 %>%
+    group_by(business_id) %>%
+    summarize(average_stars = mean(stars, na.rm = TRUE))
+
+ggplot(aggregated_data1, aes(x = average_stars)) +
+    geom_histogram(binwidth = 0.5, fill = "#FF5733", color = "darkred", alpha = 0.7, position = position_nudge(x = 0.05, y = 0)) +
+    theme_minimal() +
+    theme(
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        panel.grid.major = element_line(color = "grey", linetype = "dashed"),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "floralwhite")
+    ) +
+    labs(title = "Histogram of Star Ratings per Business", 
+         x = "Star Rating", 
+         y = "Number of Businesses")
+```
+
+
+
+
+
+
+
+
+```{r}
+library(ggmap)
+register_google(key = "AIzaSyBOvFcOp7cTm21ObC0nurGjjpzzApR4UW8")
+philly_map <- get_googlemap(center = c(lon = -75.1652, lat = 39.9526), zoom = 12, maptype = "roadmap", key = "AIzaSyBOvFcOp7cTm21ObC0nurGjjpzzApR4UW8")
+map=ggmap(philly_map) + 
+    geom_point(data = data, aes(x = longitude, y = latitude), color = "red", size = 1, alpha = 0.6)
+ggsave("philly_map_high_res.png", plot = map, width = 10, height = 8, dpi = 300)
+```
+
+
+
+
+
+```{r}
+library(tidytext)
+library(dplyr)
+library(ggplot2)
+
+data$text <- gsub("[^[:alnum:] ]", "", data$text)
+```
+
+
+```{r}
+tokens <- data %>%
+  unnest_tokens(word, text)
+
+nrc_words <- get_sentiments("nrc")  # NRC词典
+sentiment_scores <- tokens %>%
+  inner_join(nrc_words) %>%
+  count(word, sentiment, sort = TRUE)
+
+food_words <- c("pizza", "fries", "burger", "steak","rib")  # 定义食物相关词汇
+food_sentiments <- sentiment_scores %>%
+  filter(word %in% food_words)
+
+# 可视化
+ggplot(food_sentiments, aes(x = word, y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Food Related Sentiment Analysis", x = "Word", y = "Count")
+
+```
+
+
+
